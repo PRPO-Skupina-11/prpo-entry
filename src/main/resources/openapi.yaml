@@ -1,0 +1,550 @@
+openapi: 3.0.3
+info:
+  title: Entry Service API
+  version: 1.0.3
+  description: Public REST API for the web chat app (auth, chats, messages, usage proxy).
+
+servers:
+  # Added by API Auto Mocking Plugin
+  - description: SwaggerHub API Auto Mocking
+    url: https://virtserver.swaggerhub.com/uni-893/entry/1.0.3
+  - url: /api/v1
+
+tags:
+  - name: User
+  - name: Chats
+  - name: Usage
+
+components:
+  securitySchemes:
+    Auth0Bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ChatId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Conversation ID.
+    FromDate:
+      name: from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+    ToDate:
+      name: to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+
+  schemas:
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Invalid input.
+            details:
+              type: object
+              additionalProperties: true
+
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, email, displayName, createdAt]
+      properties:
+        id:
+          type: string
+          example: user_123
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        displayName:
+          type: string
+          example: Tomaž
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-01-01T10:00:00Z"
+
+    ChatSummary:
+      type: object
+      additionalProperties: false
+      required: [id, title, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          example: conv_1
+        title:
+          type: string
+          example: Onboarding help
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-01-01T10:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-01-01T10:05:00Z"
+        lastProviderId:
+          type: string
+          nullable: true
+          example: openai
+        lastModelId:
+          type: string
+          nullable: true
+          example: gpt-4.1
+
+    ListChatsResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatSummary'
+        total:
+          type: integer
+          nullable: true
+          description: Optional total count (may be omitted for cursor pagination).
+        nextCursor:
+          type: string
+          nullable: true
+
+    CreateChatRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          nullable: true
+          example: Optional title
+
+    CreateChatResponse:
+      type: object
+      additionalProperties: false
+      required: [id, title, createdAt]
+      properties:
+        id:
+          type: string
+          example: conv_2
+        title:
+          type: string
+          nullable: true
+          example: Optional title
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-01-01T11:00:00Z"
+
+    MessageRole:
+      type: string
+      enum: [user, assistant, system]
+
+    Message:
+      type: object
+      additionalProperties: false
+      required: [id, role, content, createdAt]
+      properties:
+        id:
+          type: string
+          example: msg_1
+        role:
+          $ref: '#/components/schemas/MessageRole'
+        content:
+          type: string
+          example: How do I use this app?
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-01-01T10:00:00Z"
+        providerId:
+          type: string
+          nullable: true
+          example: openai
+        modelId:
+          type: string
+          nullable: true
+          example: gpt-4.1
+        requestId:
+          type: string
+          nullable: true
+          example: req_123
+
+    ChatDetail:
+      type: object
+      additionalProperties: false
+      required: [id, title, messages]
+      properties:
+        id:
+          type: string
+          example: conv_1
+        title:
+          type: string
+          example: Onboarding help
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+
+    SendMessageRequest:
+      type: object
+      additionalProperties: false
+      required: [content]
+      properties:
+        content:
+          type: string
+          example: How do I use this app?
+        clientMessageId:
+          type: string
+          nullable: true
+          description: Optional client-generated id for idempotency.
+          example: cmsg_abc123
+        modelOverrides:
+          type: object
+          additionalProperties: false
+          nullable: true
+          properties:
+            forceProviderId:
+              type: string
+              nullable: true
+              example: openai
+            forceModelId:
+              type: string
+              nullable: true
+              example: gpt-4.1
+
+    SendMessageResponse:
+      type: object
+      additionalProperties: false
+      required: [conversationId, userMessage, assistantMessage, routing]
+      properties:
+        conversationId:
+          type: string
+          example: conv_1
+        userMessage:
+          $ref: '#/components/schemas/Message'
+        assistantMessage:
+          $ref: '#/components/schemas/Message'
+        routing:
+          type: object
+          additionalProperties: false
+          required: [requestId, providerId, modelId]
+          properties:
+            requestId:
+              type: string
+              example: req_123
+            providerId:
+              type: string
+              example: openai
+            modelId:
+              type: string
+              example: gpt-4.1
+            latencyMs:
+              type: integer
+              nullable: true
+              example: 900
+            promptTokens:
+              type: integer
+              nullable: true
+              example: 120
+            completionTokens:
+              type: integer
+              nullable: true
+              example: 200
+            totalTokens:
+              type: integer
+              nullable: true
+              example: 320
+            cost:
+              type: number
+              format: double
+              nullable: true
+              example: 0.0123
+            currency:
+              type: string
+              nullable: true
+              example: EUR
+
+    UsageProviderBreakdown:
+      type: object
+      additionalProperties: false
+      required: [providerId, requests, tokens, cost, avgLatencyMs]
+      properties:
+        providerId:
+          type: string
+          example: openai
+        requests:
+          type: integer
+          example: 90
+        tokens:
+          type: integer
+          example: 35000
+        cost:
+          type: number
+          format: double
+          example: 3.8
+        avgLatencyMs:
+          type: integer
+          example: 850
+
+    UsageCredits:
+      type: object
+      additionalProperties: false
+      required: [providerId, totalCredits, usedCredits]
+      properties:
+        providerId:
+          type: string
+          example: openai
+        totalCredits:
+          type: number
+          format: double
+          example: 10.0
+        usedCredits:
+          type: number
+          format: double
+          example: 3.8
+
+    UsageSummary:
+      type: object
+      additionalProperties: false
+      required: [from, to, totalCost, currency, totalRequests, totalTokens, byProvider, credits]
+      properties:
+        from:
+          type: string
+          format: date
+          example: "2025-01-01"
+        to:
+          type: string
+          format: date
+          example: "2025-01-31"
+        totalCost:
+          type: number
+          format: double
+          example: 4.23
+        currency:
+          type: string
+          example: EUR
+        totalRequests:
+          type: integer
+          example: 120
+        totalTokens:
+          type: integer
+          example: 45000
+        byProvider:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageProviderBreakdown'
+        credits:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageCredits'
+
+security:
+  - Auth0Bearer: []
+
+paths:
+  /user:
+    get:
+      tags: [User]
+      summary: Get current user
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /chat:
+    get:
+      tags: [Chats]
+      summary: Get conversations
+      operationId: listChats
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: List of chats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListChatsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags: [Chats]
+      summary: Create new conversation
+      operationId: createChat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChatRequest'
+      responses:
+        '201':
+          description: Chat created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateChatResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /chat/{id}:
+    get:
+      tags: [Chats]
+      summary: Get messages from a conversation
+      operationId: getChat
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+      responses:
+        '200':
+          description: Chat with messages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatDetail'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /chat/{id}/message:
+    post:
+      tags: [Chats]
+      summary: Send message and get LLM reply (non-streaming)
+      operationId: sendMessage
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '200':
+          description: Reply generated and persisted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit / quota exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /usage:
+    get:
+      tags: [Usage]
+      summary: Usage & credit summary for current user
+      operationId: getUsageSummary
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+      responses:
+        '200':
+          description: Usage summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageSummary'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
