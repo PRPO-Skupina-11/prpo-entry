@@ -29,6 +29,12 @@ public class ChatEntity {
   @Column(name = "updated_at", nullable = false)
   private OffsetDateTime updatedAt;
 
+  @Column(name = "last_provider_id")
+  private String lastProviderId;
+
+  @Column(name = "last_model_id")
+  private String lastModelId;
+
   @PrePersist
   void prePersist() {
     if (id == null) id = "conv_" + UUID.randomUUID();
@@ -80,5 +86,21 @@ public class ChatEntity {
 
   public void setUpdatedAt(OffsetDateTime updatedAt) {
     this.updatedAt = updatedAt;
+  }
+
+  public String getLastProviderId() { 
+    return lastProviderId; 
+  }
+
+  public void setLastProviderId(String lastProviderId) {
+    this.lastProviderId = lastProviderId; 
+  }
+
+  public String getLastModelId() { 
+    return lastModelId; 
+  }
+
+  public void setLastModelId(String lastModelId) { 
+    this.lastModelId = lastModelId; 
   }
 }

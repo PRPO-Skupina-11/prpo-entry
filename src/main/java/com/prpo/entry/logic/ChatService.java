@@ -18,7 +18,6 @@ import com.prpo.entry.repository.MessageRepository;
 import jakarta.transaction.Transactional;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -68,24 +67,60 @@ public class ChatService {
   @Transactional
   public ListChatsResponse listChats(String userId, Integer limit, String cursor) {
     int lim = (limit == null || limit < 1) ? 50 : Math.min(limit, 200);
+    int limitPlusOne = lim + 1;
 
-    List<ChatEntity> chats = chatRepository.findByUserIdOrderByUpdatedAtDesc(userId);
-    if (chats.size() > lim) chats = chats.subList(0, lim);
+    List<ChatEntity> rows;
+    if (cursor == null || cursor.isBlank()) {
+      rows = chatRepository.pageFirst(userId, limitPlusOne);
+    } else {
+      CursorParts parts = decodeCursor(cursor);
+      rows = chatRepository.pageAfter(userId, parts.updatedAt, parts.id, limitPlusOne);
+    }
 
-    List<ChatSummary> items = new ArrayList<>(chats.size());
-    for (ChatEntity c : chats) {
+    boolean hasMore = rows.size() > lim;
+    if (hasMore) rows = rows.subList(0, lim);
+
+    List<ChatSummary> items = new ArrayList<>(rows.size());
+    for (ChatEntity c : rows) {
       items.add(new ChatSummary()
           .id(c.getId())
           .title(Optional.ofNullable(c.getTitle()).orElse("New chat"))
           .createdAt(c.getCreatedAt())
           .updatedAt(c.getUpdatedAt())
+          .lastProviderId(c.getLastProviderId())
+          .lastModelId(c.getLastModelId())
       );
+    }
+
+    String nextCursor = null;
+    if (hasMore && !rows.isEmpty()) {
+      ChatEntity last = rows.get(rows.size() - 1);
+      nextCursor = encodeCursor(last.getUpdatedAt(), last.getId());
     }
 
     return new ListChatsResponse()
         .items(items)
-        .total(items.size())
-        .nextCursor(null);
+        .total(null)        // for cursor pagination, you can omit/leave null
+        .nextCursor(nextCursor);
+  }
+
+  private record CursorParts(OffsetDateTime updatedAt, String id) {}
+
+  private String encodeCursor(OffsetDateTime updatedAt, String id) {
+    long ms = updatedAt.toInstant().toEpochMilli();
+    return ms + ":" + id;
+  }
+
+  private CursorParts decodeCursor(String cursor) {
+    int idx = cursor.lastIndexOf(':');
+    if (idx <= 0 || idx == cursor.length() - 1) {
+      throw new IllegalArgumentException("invalid cursor");
+    }
+
+    long ms = Long.parseLong(cursor.substring(0, idx));
+    String id = cursor.substring(idx + 1);
+
+    return new CursorParts(OffsetDateTime.ofInstant(java.time.Instant.ofEpochMilli(ms), java.time.ZoneOffset.UTC), id);
   }
 
   @Transactional
@@ -105,7 +140,6 @@ public class ChatService {
 
     List<MessageEntity> historyEntities = messageRepository.findByChatIdOrderByCreatedAtAsc(chat.getId());
     List<RouterClient.ContextMessage> context = new ArrayList<>();
-    historyEntities.sort(Comparator.comparing(MessageEntity::getCreatedAt));
     for (MessageEntity m : historyEntities) {
       context.add(new RouterClient.ContextMessage(m.getRole().name(), m.getContent()));
     }
@@ -131,6 +165,8 @@ public class ChatService {
     assistantMsg.setRequestId(requestId);
     assistantMsg = messageRepository.save(assistantMsg);
 
+    chat.setLastProviderId(routed.providerId());
+    chat.setLastModelId(routed.modelId());
     chat.setUpdatedAt(OffsetDateTime.now());
     chatRepository.save(chat);
 

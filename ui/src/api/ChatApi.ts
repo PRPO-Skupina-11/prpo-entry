@@ -33,6 +33,21 @@ export type SendMessageResponse = {
   };
 };
 
+export type ChatSummary = {
+  id: string;
+  title?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastProviderId?: string | null;
+  lastModelId?: string | null;
+};
+
+export type ListChatsResponse = {
+  items: ChatSummary[];
+  total?: number | null;
+  nextCursor?: string | null;
+};
+
 export async function createChat() {
   const r = await fetch("/api/v1/chat", {
     method: "POST",
@@ -59,4 +74,14 @@ export async function sendMessage(conversationId: string, content: string) {
 
   if (!r.ok) throw new Error(`sendMessage failed: ${r.status}`);
   return r.json();
+}
+
+export async function listChats(limit = 50, cursor?: string | null) {
+  const qs = new URLSearchParams()
+  qs.set("limit", String(limit))
+  if (cursor) qs.set("cursor", cursor)
+
+  const r = await fetch(`/api/v1/chat?${qs.toString()}`)
+  if (!r.ok) throw new Error(`listChats failed: ${r.status}`)
+  return r.json()
 }
