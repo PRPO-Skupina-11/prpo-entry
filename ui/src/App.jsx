@@ -10,33 +10,88 @@ import {
   Typography,
   Container,
 } from '@mui/material'
+import { createChat, getChat, sendMessage as sendMessageApi } from './api/ChatApi'
 
 export default function App() {
-  const [messages, setMessages] = useState([
-    { id: 1, role: 'assistant', content: 'Hi.' },
-  ])
+  const [conversationId, setConversationId] = useState(null)
+  const [messages, setMessages] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
   const [draft, setDraft] = useState('')
   const bottomRef = useRef(null)
+  const inputRef = useRef(null)
 
-  function send() {
+  async function send() {
     const text = draft.trim()
-    if (!text) return
+    if (!text || !conversationId || busy) return
 
-    setMessages(m => [
-      ...m,
-      { id: Date.now(), role: 'user', content: text },
-      {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: 'Fake assistant response',
-      },
-    ])
     setDraft('')
+    setError(null)
+    setBusy(true)
+
+    const optimistic = { id: `tmp_${Date.now()}`, role: 'user', content: text }
+    setMessages(m => [...m, optimistic])
+
+    try {
+      const resp = await sendMessageApi(conversationId, text)
+
+      setMessages(m => {
+        const withoutOptimistic = m.filter(x => x.id !== optimistic.id)
+        return [...withoutOptimistic, resp.userMessage, resp.assistantMessage]
+      })
+    } catch (e) {
+      setMessages(m => m.filter(x => x.id !== optimistic.id))
+      setError(e?.message ?? 'Send failed')
+    } finally {
+      setBusy(false)
+      requestAnimationFrame(() => {
+        inputRef.current?.focus()
+      })
+    }
   }
+
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function boot() {
+      try {
+        setBusy(true)
+        setError(null)
+
+        const chat = await createChat()
+        if (cancelled) return
+
+        setConversationId(chat.id)
+
+        const full = await getChat(chat.id)
+        if (cancelled) return
+
+        setMessages(full.messages ?? [])
+      } catch (e) {
+        if (!cancelled) setError(e?.message ?? 'Failed to start chat')
+      } finally {
+        if (!cancelled) setBusy(false)
+      }
+    }
+
+    boot()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  useEffect(() => {
+    if (conversationId && !busy) {
+      requestAnimationFrame(() => {
+        inputRef.current?.focus()
+      })
+    }
+  }, [conversationId, busy])
 
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -93,20 +148,30 @@ export default function App() {
         }}
       >
         <Container maxWidth="md">
+          {error ? (
+            <Typography variant="body2" color="error" sx={{ mb: 1 }}>
+              {error}
+            </Typography>
+          ) : null}
           <Stack direction="row" spacing={1}>
             <TextField
               fullWidth
-              placeholder="Type a message…"
+              inputRef={inputRef}
+              placeholder={conversationId ? 'Type a message…' : 'Starting chat…'}
               value={draft}
+              disabled={!conversationId || busy}
               onChange={e => setDraft(e.target.value)}
               onKeyDown={e => {
-                if (e.key === 'Enter') send()
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  send()
+                }
               }}
             />
             <Button
               variant="contained"
               onClick={send}
-              disabled={!draft.trim()}
+              disabled={!conversationId || busy || !draft.trim()}
             >
               Send
             </Button>
