@@ -63,6 +63,13 @@ public class ChatService {
         .title(chat.getTitle())
         .messages(msgs);
   }
+  
+  @Transactional
+  public void deleteChat(String userId, String chatId) {
+    ChatEntity chat = requireChat(userId, chatId);
+    messageRepository.deleteByChatId(chat.getId());
+    chatRepository.delete(chat);
+  }
 
   @Transactional
   public ListChatsResponse listChats(String userId, Integer limit, String cursor) {
@@ -165,6 +172,33 @@ public class ChatService {
     assistantMsg.setRequestId(requestId);
     assistantMsg = messageRepository.save(assistantMsg);
 
+    if (isDefaultTitle(chat)) {
+      String titlePrompt =
+          "Generate a short chat title (max 6 words). " +
+          "Output ONLY the title. No quotes. No trailing punctuation.";
+
+      List<RouterClient.ContextMessage> titleContext = new ArrayList<>();
+      titleContext.add(new RouterClient.ContextMessage("user", content));
+      titleContext.add(new RouterClient.ContextMessage("assistant", routed.assistantContent()));
+
+      String titleRequestId = "req_" + UUID.randomUUID();
+
+      RouterClient.RouteResult titleRouted = routerClient.route(
+          titleRequestId,
+          userId,
+          chat.getId(),
+          titlePrompt,
+          titleContext,
+          null,
+          null
+      );
+
+      String newTitle = sanitizeTitle(titleRouted.assistantContent());
+      if (newTitle != null) {
+        chat.setTitle(newTitle);
+      }
+    }
+
     chat.setLastProviderId(routed.providerId());
     chat.setLastModelId(routed.modelId());
     chat.setUpdatedAt(OffsetDateTime.now());
@@ -208,5 +242,31 @@ public class ChatService {
         .providerId(e.getProviderId())
         .modelId(e.getModelId())
         .requestId(e.getRequestId());
+  }
+  
+  private boolean isDefaultTitle(ChatEntity chat) {
+    String t = chat.getTitle();
+    if (t == null) return true;
+    t = t.trim();
+    return t.isEmpty() || t.equalsIgnoreCase("New chat");
+  }
+
+  private String sanitizeTitle(String s) {
+    if (s == null) return null;
+    String t = s.trim();
+    if (t.startsWith("\"") && t.endsWith("\"") && t.length() >= 2) {
+      t = t.substring(1, t.length() - 1).trim();
+    }
+    t = t.replaceAll("\\s+", " ");
+    while (!t.isEmpty()) {
+      char c = t.charAt(t.length() - 1);
+      if (c == '.' || c == '!' || c == '?' || c == ':' || c == ';') {
+        t = t.substring(0, t.length() - 1).trim();
+      } else {
+        break;
+      }
+    }
+    if (t.length() > 60) t = t.substring(0, 60).trim();
+    return t.isBlank() ? null : t;
   }
 }

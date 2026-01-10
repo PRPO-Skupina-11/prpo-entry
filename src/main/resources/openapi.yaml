@@ -1,13 +1,13 @@
 openapi: 3.0.3
 info:
   title: Entry Service API
-  version: 1.0.3
+  version: 1.0.4
   description: Public REST API for the web chat app (auth, chats, messages, usage proxy).
 
 servers:
   # Added by API Auto Mocking Plugin
   - description: SwaggerHub API Auto Mocking
-    url: https://virtserver.swaggerhub.com/uni-893/entry/1.0.3
+    url: https://virtserver.swaggerhub.com/uni-893/entry/1.0.4
   - url: /api/v1
 
 tags:
@@ -475,7 +475,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
+    delete:
+      tags: [Chats]
+      summary: Delete a conversation and all its messages
+      operationId: deleteChat
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /chat/{id}/message:
     post:
       tags: [Chats]

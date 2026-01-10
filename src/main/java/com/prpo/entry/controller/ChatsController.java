@@ -41,4 +41,10 @@ public class ChatsController implements ChatsApi {
   public ResponseEntity<SendMessageResponse> sendMessage(String id, SendMessageRequest sendMessageRequest) {
     return ResponseEntity.ok(chatService.sendMessage(DEV_USER_ID, id, sendMessageRequest));
   }
+
+  @Override
+  public ResponseEntity<Void> deleteChat(String id) {
+    chatService.deleteChat(DEV_USER_ID, id);
+    return ResponseEntity.noContent().build();
+  }
 }

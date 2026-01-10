@@ -85,3 +85,10 @@ export async function listChats(limit = 50, cursor?: string | null) {
   if (!r.ok) throw new Error(`listChats failed: ${r.status}`)
   return r.json()
 }
+
+export async function deleteChat(conversationId: string) {
+  const r = await fetch(`/api/v1/chat/${encodeURIComponent(conversationId)}`, {
+    method: "DELETE",
+  })
+  if (!r.ok) throw new Error(`deleteChat failed: ${r.status}`)
+}
