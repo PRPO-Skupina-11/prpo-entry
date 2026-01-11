@@ -3,6 +3,7 @@ package com.prpo.entry.logic;
 import com.prpo.entry.domain.ChatEntity;
 import com.prpo.entry.domain.MessageEntity;
 import com.prpo.entry.helpers.RouterClient;
+import com.prpo.entry.helpers.UsageClient;
 import com.prpo.entry.model.ChatDetail;
 import com.prpo.entry.model.ChatSummary;
 import com.prpo.entry.model.CreateChatRequest;
@@ -29,11 +30,18 @@ public class ChatService {
   private final ChatRepository chatRepository;
   private final MessageRepository messageRepository;
   private final RouterClient routerClient;
+  private final UsageClient usageClient;
 
-  public ChatService(ChatRepository chatRepository, MessageRepository messageRepository, RouterClient routerClient) {
+  public ChatService(
+      ChatRepository chatRepository,
+      MessageRepository messageRepository,
+      RouterClient routerClient,
+      UsageClient usageClient
+  ) {
     this.chatRepository = chatRepository;
     this.messageRepository = messageRepository;
     this.routerClient = routerClient;
+    this.usageClient = usageClient;
   }
 
   @Transactional
@@ -63,7 +71,7 @@ public class ChatService {
         .title(chat.getTitle())
         .messages(msgs);
   }
-  
+
   @Transactional
   public void deleteChat(String userId, String chatId) {
     ChatEntity chat = requireChat(userId, chatId);
@@ -175,6 +183,8 @@ public class ChatService {
     assistantMsg.setRequestId(requestId);
     assistantMsg = messageRepository.save(assistantMsg);
 
+    recordUsageEvent(userId, chat.getId(), requestId, routed);
+
     if (isDefaultTitle(chat)) {
       String titlePrompt =
           "Generate a short chat title (max 6 words). " +
@@ -223,6 +233,31 @@ public class ChatService {
         .userMessage(toApiMessage(userMsg))
         .assistantMessage(toApiMessage(assistantMsg))
         .routing(routing);
+  }
+
+  private void recordUsageEvent(
+      String userId,
+      String conversationId,
+      String requestId,
+      RouterClient.RouteResult routed
+  ) {
+    UsageClient.UsageEvent event = new UsageClient.UsageEvent(
+        "evt_" + UUID.randomUUID(),
+        requestId,
+        userId,
+        conversationId,
+        routed.providerId(),
+        routed.modelId(),
+        routed.promptTokens(),
+        routed.completionTokens(),
+        routed.totalTokens(),
+        routed.cost(),
+        routed.currency(),
+        routed.latencyMs(),
+        OffsetDateTime.now()
+    );
+
+    usageClient.recordEvent(event);
   }
 
   private ChatEntity requireChat(String userId, String chatId) {
