@@ -21,6 +21,7 @@ import {
   DialogActions,
 } from '@mui/material'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import { useAuth0 } from '@auth0/auth0-react'
 import {
   createChat,
   getChat,
@@ -29,7 +30,11 @@ import {
   deleteChat as deleteChatApi
 } from './api/ChatApi'
 
+const GOOGLE_CONNECTION = 'google-oauth2'
+
 export default function App() {
+  const { isAuthenticated, isLoading, loginWithRedirect, logout, getAccessTokenSilently } = useAuth0()
+
   const [conversationId, setConversationId] = useState(null)
   const [messages, setMessages] = useState([])
   const [busy, setBusy] = useState(false)
@@ -40,25 +45,37 @@ export default function App() {
   const [chatItems, setChatItems] = useState([])
   const [chatCursor, setChatCursor] = useState(null)
   const [chatLoading, setChatLoading] = useState(false)
-  
+
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
-
 
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
 
   const isWaitingForAssistant =
-  busy && messages.length > 0 && messages[messages.length - 1]?.role === 'user'
+    busy && messages.length > 0 && messages[messages.length - 1]?.role === 'user'
 
+  async function loginGoogle() {
+    await loginWithRedirect({
+      authorizationParams: {
+        connection: GOOGLE_CONNECTION,
+      },
+    })
+  }
+
+  async function token() {
+    return await getAccessTokenSilently()
+  }
 
   async function loadChatById(chatId) {
+    if (!isAuthenticated) return
+
     setBusy(true)
     setError(null)
     try {
       setConversationId(chatId)
-      const full = await getChat(chatId)
+      const full = await getChat(await token(), chatId)
       setMessages(full.messages ?? [])
       requestAnimationFrame(() => inputRef.current?.focus())
     } catch (e) {
@@ -76,11 +93,13 @@ export default function App() {
   }
 
   async function loadMoreChats() {
+    if (!isAuthenticated) return
     if (!chatCursor || chatLoading) return
+
     setChatLoading(true)
     setError(null)
     try {
-      const res = await listChats(50, chatCursor)
+      const res = await listChats(await token(), 50, chatCursor)
       setChatItems(prev => [...prev, ...(res.items ?? [])])
       setChatCursor(res.nextCursor ?? null)
     } catch (e) {
@@ -91,10 +110,12 @@ export default function App() {
   }
 
   async function refreshChats() {
+    if (!isAuthenticated) return
+
     setChatLoading(true)
     setError(null)
     try {
-      const res = await listChats(50, null)
+      const res = await listChats(await token(), 50, null)
       setChatItems(res.items ?? [])
       setChatCursor(res.nextCursor ?? null)
     } catch (e) {
@@ -105,6 +126,11 @@ export default function App() {
   }
 
   async function send() {
+    if (!isAuthenticated) {
+      await loginGoogle()
+      return
+    }
+
     const text = draft.trim()
     if (!text || busy) return
 
@@ -117,9 +143,10 @@ export default function App() {
 
     try {
       let chatId = conversationId
+      const t = await token()
 
       if (!chatId) {
-        const chat = await createChat()
+        const chat = await createChat(t)
         chatId = chat.id
         setConversationId(chatId)
 
@@ -138,7 +165,7 @@ export default function App() {
         })
       }
 
-      const resp = await sendMessageApi(chatId, text)
+      const resp = await sendMessageApi(t, chatId, text)
 
       setMessages(m => {
         const withoutOptimistic = m.filter(x => x.id !== optimistic.id)
@@ -169,12 +196,14 @@ export default function App() {
   }
 
   async function confirmDelete() {
+    if (!isAuthenticated) return
     if (!deleteTarget || deleteBusy) return
+
     setDeleteBusy(true)
     setError(null)
 
     try {
-      await deleteChatApi(deleteTarget.id)
+      await deleteChatApi(await token(), deleteTarget.id)
 
       setChatItems(items => items.filter(x => x.id !== deleteTarget.id))
 
@@ -193,8 +222,10 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (isLoading) return
+    if (!isAuthenticated) return
     refreshChats()
-  }, [])
+  }, [isLoading, isAuthenticated])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -259,6 +290,7 @@ export default function App() {
               minWidth: 0,
               px: sidebarCollapsed ? 0 : 2,
             }}
+            disabled={!isAuthenticated}
           >
             {sidebarCollapsed ? '+' : 'New chat'}
           </Button>
@@ -277,89 +309,102 @@ export default function App() {
             </Typography>
           ) : null}
 
-          <List dense disablePadding>
-            {chatItems.length === 0 ? (
-              <ListItemButton
-                onClick={refreshChats}
-                disabled={chatLoading}
-                sx={{ px: sidebarCollapsed ? 1 : 2, mx: 1, borderRadius: 2 }}
-              >
-                <ListItemText
-                  primary={chatLoading ? 'Loading…' : sidebarCollapsed ? 'Load' : 'Load chats'}
-                  primaryTypographyProps={{ noWrap: true }}
-                />
-              </ListItemButton>
-            ) : null}
-
-            {chatItems.map(c => (
-              <ListItemButton
-                key={c.id}
-                selected={c.id === conversationId}
-                onClick={() => loadChatById(c.id)}
-                sx={{
-                  px: sidebarCollapsed ? 1 : 2,
-                  mx: 1,
-                  borderRadius: 2,
-                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-                }}
-              >
-                {sidebarCollapsed ? (
-                  <Box
-                    sx={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 999,
-                      bgcolor: c.id === conversationId ? 'text.primary' : 'grey.400',
-                    }}
+          {!isLoading && !isAuthenticated ? (
+            <Box sx={{ px: 2, py: 2 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                Log in with Google to see your chats.
+              </Typography>
+              <Button variant="contained" onClick={loginGoogle} fullWidth>
+                Continue with Google
+              </Button>
+            </Box>
+          ) : (
+            <List dense disablePadding>
+              {chatItems.length === 0 ? (
+                <ListItemButton
+                  onClick={refreshChats}
+                  disabled={chatLoading || !isAuthenticated}
+                  sx={{ px: sidebarCollapsed ? 1 : 2, mx: 1, borderRadius: 2 }}
+                >
+                  <ListItemText
+                    primary={chatLoading ? 'Loading…' : sidebarCollapsed ? 'Load' : 'Load chats'}
+                    primaryTypographyProps={{ noWrap: true }}
                   />
-                ) : (
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      width: '100%',
-                      gap: 1,
-                      '& .delete-btn': {
-                        opacity: 0,
-                        transition: 'opacity 120ms ease',
-                      },
-                      '&:hover .delete-btn': {
-                        opacity: 1,
-                      },
-                    }}
-                  >
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <ListItemText
-                        primary={c.title ?? 'New chat'}
-                        secondary={c.updatedAt ? new Date(c.updatedAt).toLocaleDateString() : null}
-                        primaryTypographyProps={{ noWrap: true }}
-                        secondaryTypographyProps={{ noWrap: true }}
-                      />
-                    </Box>
+                </ListItemButton>
+              ) : null}
 
-                    <IconButton
-                      className="delete-btn"
-                      size="small"
-                      edge="end"
-                      aria-label="Delete chat"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        openDeleteDialog(c)
+              {chatItems.map(c => (
+                <ListItemButton
+                  key={c.id}
+                  selected={c.id === conversationId}
+                  onClick={() => loadChatById(c.id)}
+                  sx={{
+                    px: sidebarCollapsed ? 1 : 2,
+                    mx: 1,
+                    borderRadius: 2,
+                    justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                  }}
+                  disabled={!isAuthenticated}
+                >
+                  {sidebarCollapsed ? (
+                    <Box
+                      sx={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 999,
+                        bgcolor: c.id === conversationId ? 'text.primary' : 'grey.400',
+                      }}
+                    />
+                  ) : (
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        width: '100%',
+                        gap: 1,
+                        '& .delete-btn': {
+                          opacity: 0,
+                          transition: 'opacity 120ms ease',
+                        },
+                        '&:hover .delete-btn': {
+                          opacity: 1,
+                        },
                       }}
                     >
-                      <DeleteOutlineIcon fontSize="small" />
-                    </IconButton>
-                  </Box>
-                )}
-              </ListItemButton>
-            ))}
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <ListItemText
+                          primary={c.title ?? 'New chat'}
+                          secondary={c.updatedAt ? new Date(c.updatedAt).toLocaleDateString() : null}
+                          primaryTypographyProps={{ noWrap: true }}
+                          secondaryTypographyProps={{ noWrap: true }}
+                        />
+                      </Box>
 
-            {!sidebarCollapsed && chatItems.length > 0 ? (
-              <ListItemButton disabled={!chatCursor || chatLoading} onClick={loadMoreChats}>
-                <ListItemText primary={chatLoading ? 'Loading…' : chatCursor ? 'Load more' : 'No more'} />
-              </ListItemButton>
-            ) : null}
-          </List>
+                      <IconButton
+                        className="delete-btn"
+                        size="small"
+                        edge="end"
+                        aria-label="Delete chat"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openDeleteDialog(c)
+                        }}
+                        disabled={!isAuthenticated}
+                      >
+                        <DeleteOutlineIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  )}
+                </ListItemButton>
+              ))}
+
+              {!sidebarCollapsed && chatItems.length > 0 ? (
+                <ListItemButton disabled={!chatCursor || chatLoading || !isAuthenticated} onClick={loadMoreChats}>
+                  <ListItemText primary={chatLoading ? 'Loading…' : chatCursor ? 'Load more' : 'No more'} />
+                </ListItemButton>
+              ) : null}
+            </List>
+          )}
         </Box>
       </Box>
 
@@ -369,6 +414,19 @@ export default function App() {
             <Typography variant="h6" sx={{ flex: 1 }}>
               PRPO Chat
             </Typography>
+
+            {isLoading ? null : !isAuthenticated ? (
+              <Button color="inherit" onClick={loginGoogle}>
+                Continue with Google
+              </Button>
+            ) : (
+              <Button
+                color="inherit"
+                onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+              >
+                Log out
+              </Button>
+            )}
           </Toolbar>
         </AppBar>
 
@@ -407,12 +465,7 @@ export default function App() {
               ))}
 
               {isWaitingForAssistant ? (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'flex-start',
-                  }}
-                >
+                <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
                   <Paper
                     variant="outlined"
                     sx={{
@@ -436,10 +489,12 @@ export default function App() {
                   </Paper>
                 </Box>
               ) : null}
+
               <div ref={bottomRef} />
             </Stack>
           </Container>
         </Box>
+
         <Box
           sx={{
             borderTop: '1px solid',
@@ -454,32 +509,40 @@ export default function App() {
                 {error}
               </Typography>
             ) : null}
-            <Stack direction="row" spacing={1}>
-              <TextField
-                fullWidth
-                inputRef={inputRef}
-                placeholder={conversationId ? 'Type a message…' : 'Type a message to start a chat…'}
-                value={draft}
-                disabled={busy}
-                onChange={e => setDraft(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    send()
-                  }
-                }}
-              />
-              <Button
-                variant="contained"
-                onClick={send}
-                disabled={busy || !draft.trim()}
-              >
-                Send
+
+            {!isLoading && !isAuthenticated ? (
+              <Button variant="contained" fullWidth onClick={loginGoogle}>
+                Continue with Google
               </Button>
-            </Stack>
+            ) : (
+              <Stack direction="row" spacing={1}>
+                <TextField
+                  fullWidth
+                  inputRef={inputRef}
+                  placeholder={conversationId ? 'Type a message…' : 'Type a message to start a chat…'}
+                  value={draft}
+                  disabled={busy || !isAuthenticated}
+                  onChange={e => setDraft(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      send()
+                    }
+                  }}
+                />
+                <Button
+                  variant="contained"
+                  onClick={send}
+                  disabled={busy || !draft.trim() || !isAuthenticated}
+                >
+                  Send
+                </Button>
+              </Stack>
+            )}
           </Container>
         </Box>
       </Box>
+
       <Dialog open={deleteDialogOpen} onClose={closeDeleteDialog}>
         <DialogTitle>Delete chat?</DialogTitle>
         <DialogContent>

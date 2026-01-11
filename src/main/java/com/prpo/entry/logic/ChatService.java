@@ -107,7 +107,7 @@ public class ChatService {
 
     return new ListChatsResponse()
         .items(items)
-        .total(null)        // for cursor pagination, you can omit/leave null
+        .total(null)
         .nextCursor(nextCursor);
   }
 
@@ -127,7 +127,10 @@ public class ChatService {
     long ms = Long.parseLong(cursor.substring(0, idx));
     String id = cursor.substring(idx + 1);
 
-    return new CursorParts(OffsetDateTime.ofInstant(java.time.Instant.ofEpochMilli(ms), java.time.ZoneOffset.UTC), id);
+    return new CursorParts(
+        OffsetDateTime.ofInstant(java.time.Instant.ofEpochMilli(ms), java.time.ZoneOffset.UTC),
+        id
+    );
   }
 
   @Transactional
@@ -243,7 +246,7 @@ public class ChatService {
         .modelId(e.getModelId())
         .requestId(e.getRequestId());
   }
-  
+
   private boolean isDefaultTitle(ChatEntity chat) {
     String t = chat.getTitle();
     if (t == null) return true;

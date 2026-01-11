@@ -48,47 +48,71 @@ export type ListChatsResponse = {
   nextCursor?: string | null;
 };
 
-export async function createChat() {
+function authHeaders(token: string) {
+  return { Authorization: `Bearer ${token}` };
+}
+
+export async function createChat(token: string): Promise<CreateChatResponse> {
   const r = await fetch("/api/v1/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}"
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(token),
+    },
+    body: "{}",
   });
 
   if (!r.ok) throw new Error(`createChat failed: ${r.status}`);
   return r.json();
 }
 
-export async function getChat(conversationId: string) {
-  const r = await fetch(`/api/v1/chat/${encodeURIComponent(conversationId)}`);
+export async function getChat(token: string, conversationId: string) {
+  const r = await fetch(`/api/v1/chat/${encodeURIComponent(conversationId)}`, {
+    headers: {
+      ...authHeaders(token),
+    },
+  });
+
   if (!r.ok) throw new Error(`getChat failed: ${r.status}`);
   return r.json();
 }
 
-export async function sendMessage(conversationId: string, content: string) {
+export async function sendMessage(token: string, conversationId: string, content: string): Promise<SendMessageResponse> {
   const r = await fetch(`/api/v1/chat/${encodeURIComponent(conversationId)}/message`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content })
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(token),
+    },
+    body: JSON.stringify({ content }),
   });
 
   if (!r.ok) throw new Error(`sendMessage failed: ${r.status}`);
   return r.json();
 }
 
-export async function listChats(limit = 50, cursor?: string | null) {
-  const qs = new URLSearchParams()
-  qs.set("limit", String(limit))
-  if (cursor) qs.set("cursor", cursor)
+export async function listChats(token: string, limit = 50, cursor?: string | null): Promise<ListChatsResponse> {
+  const qs = new URLSearchParams();
+  qs.set("limit", String(limit));
+  if (cursor) qs.set("cursor", cursor);
 
-  const r = await fetch(`/api/v1/chat?${qs.toString()}`)
-  if (!r.ok) throw new Error(`listChats failed: ${r.status}`)
-  return r.json()
+  const r = await fetch(`/api/v1/chat?${qs.toString()}`, {
+    headers: {
+      ...authHeaders(token),
+    },
+  });
+
+  if (!r.ok) throw new Error(`listChats failed: ${r.status}`);
+  return r.json();
 }
 
-export async function deleteChat(conversationId: string) {
+export async function deleteChat(token: string, conversationId: string) {
   const r = await fetch(`/api/v1/chat/${encodeURIComponent(conversationId)}`, {
     method: "DELETE",
-  })
-  if (!r.ok) throw new Error(`deleteChat failed: ${r.status}`)
+    headers: {
+      ...authHeaders(token),
+    },
+  });
+
+  if (!r.ok) throw new Error(`deleteChat failed: ${r.status}`);
 }
