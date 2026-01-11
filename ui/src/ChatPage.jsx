@@ -19,6 +19,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
+  MenuItem,
 } from '@mui/material'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { useAuth0 } from '@auth0/auth0-react'
@@ -29,8 +30,7 @@ import {
   listChats,
   deleteChat as deleteChatApi
 } from './api/ChatApi'
-import { useNavigate, useLocation } from "react-router-dom";
-
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 
 
 const GOOGLE_CONNECTION = 'google-oauth2'
@@ -52,6 +52,10 @@ export default function App() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
+
+  const [modelChoice, setModelChoice] = useState('auto')
+  
+  const { chatId: routeChatId } = useParams()
 
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
@@ -97,6 +101,7 @@ export default function App() {
     setError(null)
     setConversationId(null)
     setMessages([])
+    navigate('/')
     requestAnimationFrame(() => inputRef.current?.focus())
   }
 
@@ -157,6 +162,7 @@ export default function App() {
         const chat = await createChat(t)
         chatId = chat.id
         setConversationId(chatId)
+        navigate(`/chat/${encodeURIComponent(chatId)}`, { replace: true })
 
         setChatItems(prev => {
           const exists = prev.some(c => c.id === chatId)
@@ -173,7 +179,16 @@ export default function App() {
         })
       }
 
-      const resp = await sendMessageApi(t, chatId, text)
+      let forceProviderId = null
+      let forceModelId = null
+
+      if (modelChoice !== 'auto') {
+        forceModelId = modelChoice
+        if (modelChoice.startsWith('gpt-')) forceProviderId = 'openai'
+        else forceProviderId = 'anthropic'
+      }
+
+      const resp = await sendMessageApi(t, chatId, text, forceProviderId, forceModelId)
 
       setMessages(m => {
         const withoutOptimistic = m.filter(x => x.id !== optimistic.id)
@@ -218,6 +233,7 @@ export default function App() {
       if (conversationId === deleteTarget.id) {
         setConversationId(null)
         setMessages([])
+        navigate('/')
       }
 
       setDeleteDialogOpen(false)
@@ -247,6 +263,22 @@ export default function App() {
     }
   }, [conversationId, busy])
 
+  useEffect(() => {
+    if (isLoading) return
+    if (!isAuthenticated) return
+
+    if (routeChatId && routeChatId !== conversationId) {
+      loadChatById(routeChatId)
+      return
+    }
+
+    if (!routeChatId && conversationId) {
+      setConversationId(null)
+      setMessages([])
+      navigate('/')
+    }
+  }, [routeChatId, isLoading, isAuthenticated])
+
   return (
     <Box sx={{ height: '100vh', display: 'flex', bgcolor: 'background.default' }}>
       <Box
@@ -261,20 +293,6 @@ export default function App() {
         }}
       >
         <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Box
-            sx={{
-              width: 32,
-              height: 32,
-              borderRadius: 2,
-              bgcolor: 'grey.100',
-              display: 'grid',
-              placeItems: 'center',
-              fontWeight: 700,
-            }}
-          >
-            P
-          </Box>
-
           {!sidebarCollapsed ? (
             <Typography variant="subtitle1" sx={{ flex: 1, fontWeight: 600 }}>
               PRPO
@@ -296,7 +314,7 @@ export default function App() {
             sx={{
               justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
               minWidth: 0,
-              px: sidebarCollapsed ? 0 : 2,
+              px: 2,
             }}
             disabled={!isAuthenticated}
           >
@@ -345,7 +363,7 @@ export default function App() {
                 <ListItemButton
                   key={c.id}
                   selected={c.id === conversationId}
-                  onClick={() => loadChatById(c.id)}
+                  onClick={() => navigate(`/chat/${encodeURIComponent(c.id)}`)}
                   sx={{
                     px: sidebarCollapsed ? 1 : 2,
                     mx: 1,
@@ -466,7 +484,9 @@ export default function App() {
                       color="text.secondary"
                       sx={{ display: 'block', mb: 0.5 }}
                     >
-                      {m.role}
+                      {m.role === 'assistant'
+                        ? `assistant${m.modelId ? ` (${m.modelId})` : ''}`
+                        : m.role}
                     </Typography>
                     <Typography sx={{ whiteSpace: 'pre-wrap' }}>
                       {m.content}
@@ -526,7 +546,7 @@ export default function App() {
                 Continue with Google
               </Button>
             ) : (
-              <Stack direction="row" spacing={1}>
+              <Stack direction="row" spacing={1} alignItems="center">
                 <TextField
                   fullWidth
                   inputRef={inputRef}
@@ -541,6 +561,22 @@ export default function App() {
                     }
                   }}
                 />
+
+                <TextField
+                  select
+                  size="small"
+                  value={modelChoice}
+                  disabled={busy || !isAuthenticated}
+                  onChange={(e) => setModelChoice(e.target.value)}
+                  sx={{ width: 210 }}
+                >
+                  <MenuItem value="auto">Auto</MenuItem>
+                  <Divider />
+                  <MenuItem value="gpt-5-mini">OpenAI · gpt-5-mini</MenuItem>
+                  <MenuItem value="gpt-5.2">OpenAI · gpt-5.2</MenuItem>
+                  <MenuItem value="claude-sonnet-4-5">Anthropic · claude-sonnet-4-5</MenuItem>
+                </TextField>
+
                 <Button
                   variant="contained"
                   onClick={send}

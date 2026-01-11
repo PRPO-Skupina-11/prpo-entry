@@ -77,14 +77,29 @@ export async function getChat(token: string, conversationId: string) {
   return r.json();
 }
 
-export async function sendMessage(token: string, conversationId: string, content: string): Promise<SendMessageResponse> {
+export async function sendMessage(
+  token: string,
+  conversationId: string,
+  content: string,
+  forceProviderId?: string | null,
+  forceModelId?: string | null
+): Promise<SendMessageResponse> {
+  const body: any = { content }
+
+  if (forceProviderId || forceModelId) {
+    body.modelOverrides = {
+      forceProviderId: forceProviderId ?? null,
+      forceModelId: forceModelId ?? null,
+    }
+  }
+
   const r = await fetch(`/api/v1/chat/${encodeURIComponent(conversationId)}/message`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...authHeaders(token),
     },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(body),
   });
 
   if (!r.ok) throw new Error(`sendMessage failed: ${r.status}`);

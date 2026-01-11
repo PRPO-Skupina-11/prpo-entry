@@ -7,6 +7,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<ChatPage />} />
       <Route path="/usage" element={<UsagePage />} />
+      <Route path="/chat/:chatId" element={<App />} />
     </Routes>
   );
 }
