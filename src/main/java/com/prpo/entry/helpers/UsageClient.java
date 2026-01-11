@@ -25,6 +25,7 @@ public class UsageClient {
       String modelId,
       Integer tokens,
       Double cost,
+      Integer latencyMs,
       OffsetDateTime timestamp
   ) {}
 

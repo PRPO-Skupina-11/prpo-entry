@@ -162,22 +162,19 @@ export default function App() {
         const chat = await createChat(t)
         chatId = chat.id
         setConversationId(chatId)
-        navigate(`/chat/${encodeURIComponent(chatId)}`, { replace: true })
+
+        window.history.replaceState(null, "", `/chat/${encodeURIComponent(chatId)}`)
 
         setChatItems(prev => {
           const exists = prev.some(c => c.id === chatId)
           if (exists) return prev
           return [
-            {
-              id: chatId,
-              title: chat.title ?? 'New chat',
-              createdAt: chat.createdAt,
-              updatedAt: chat.createdAt,
-            },
+            { id: chatId, title: chat.title ?? 'New chat', createdAt: chat.createdAt, updatedAt: chat.createdAt },
             ...prev,
           ]
         })
       }
+
 
       let forceProviderId = null
       let forceModelId = null

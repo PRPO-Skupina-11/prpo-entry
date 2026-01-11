@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Box,
   Button,
@@ -11,6 +11,29 @@ import {
 import { useAuth0 } from '@auth0/auth0-react'
 import { getUsage } from './api/UsageApi'
 import { useNavigate } from "react-router-dom"
+
+function toNum(v) {
+  return typeof v === 'number' ? v : 0
+}
+
+function weightedAvgLatency(byProvider) {
+  if (!Array.isArray(byProvider) || byProvider.length === 0) return null
+
+  let sumLatency = 0
+  let sumRequests = 0
+
+  for (const p of byProvider) {
+    const req = toNum(p?.requests)
+    const lat = typeof p?.avgLatencyMs === 'number' ? p.avgLatencyMs : null
+    if (req > 0 && lat != null) {
+      sumLatency += lat * req
+      sumRequests += req
+    }
+  }
+
+  if (sumRequests === 0) return null
+  return Math.round(sumLatency / sumRequests)
+}
 
 export default function UsagePage() {
   const { isAuthenticated, isLoading, getAccessTokenSilently } = useAuth0()
@@ -40,15 +63,28 @@ export default function UsagePage() {
     if (!isLoading && isAuthenticated) loadUsage()
   }, [isLoading, isAuthenticated])
 
+  const byProvider = useMemo(() => {
+    const arr = Array.isArray(usage?.byProvider) ? usage.byProvider : []
+    return [...arr].sort((a, b) => toNum(b?.cost) - toNum(a?.cost))
+  }, [usage])
+
+  const avgLatencyMs = useMemo(() => weightedAvgLatency(byProvider), [byProvider])
+
   return (
     <Box sx={{ flex: 1, overflow: 'auto' }}>
       <Container maxWidth="md" sx={{ py: 4 }}>
         <Stack spacing={3}>
+
           <Paper sx={{ p: 3 }}>
             <Stack direction="row" alignItems="center" spacing={2}>
               <Typography variant="h6" sx={{ flex: 1 }}>
                 Usage summary
               </Typography>
+
+              <Button variant="outlined" onClick={() => navigate("/")}>
+                Chats
+              </Button>
+
               <Button variant="outlined" onClick={loadUsage} disabled={busy}>
                 Refresh
               </Button>
@@ -62,10 +98,13 @@ export default function UsagePage() {
               <Typography color="error">{error}</Typography>
             ) : usage ? (
               <Stack spacing={1} sx={{ mt: 2 }}>
-                <Typography>Total requests: {usage.totalRequests}</Typography>
-                <Typography>Total tokens: {usage.totalTokens}</Typography>
+                <Typography>Total requests: {toNum(usage.totalRequests)}</Typography>
+                <Typography>Total tokens: {toNum(usage.totalTokens)}</Typography>
                 <Typography>
-                  Estimated cost: {usage.totalCost.toFixed(4)} {usage.currency}
+                  Estimated cost: {toNum(usage.totalCost).toFixed(4)} {usage.currency ?? 'EUR'}
+                </Typography>
+                <Typography>
+                  Avg latency: {avgLatencyMs != null ? `${avgLatencyMs} ms` : '—'}
                 </Typography>
               </Stack>
             ) : null}
@@ -76,29 +115,34 @@ export default function UsagePage() {
               By provider
             </Typography>
 
-            {usage?.byProvider?.length ? (
-              <Stack spacing={1}>
-                {usage.byProvider.map(p => (
-                  <Box
-                    key={p.providerId}
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      borderBottom: '1px solid',
-                      borderColor: 'divider',
-                      pb: 1,
-                    }}
-                  >
-                    <Box>
-                      <Typography fontWeight={600}>{p.providerId}</Typography>
-                      <Typography variant="caption">
-                        Requests: {p.requests} · Tokens: {p.tokens}
+            {byProvider.length ? (
+              <Stack spacing={1.5}>
+                {byProvider.map(p => (
+                  <Stack sx={{ width: '100%' }} spacing={0.5}>
+                    <Stack direction="row" spacing={2} alignItems="baseline">
+                      <Typography fontWeight={700} sx={{ textTransform: 'capitalize' }}>
+                        {p.providerId ?? 'unknown'}
                       </Typography>
-                    </Box>
-                    <Typography>
-                      {p.cost.toFixed(4)} {usage.currency}
-                    </Typography>
-                  </Box>
+
+                      <Typography variant="body2" color="text.secondary">
+                        {toNum(p.requests)} requests
+                      </Typography>
+
+                      <Typography variant="body2" color="text.secondary">
+                        {toNum(p.tokens)} tokens
+                      </Typography>
+
+                      <Typography variant="body2" color="text.secondary">
+                        {typeof p.avgLatencyMs === 'number' ? `${Math.round(p.avgLatencyMs)} ms avg` : '— avg'}
+                      </Typography>
+
+                      <Box sx={{ flex: 1 }} />
+
+                      <Typography fontWeight={700}>
+                        {toNum(p.cost).toFixed(4)} {usage?.currency ?? 'EUR'}
+                      </Typography>
+                    </Stack>
+                  </Stack>
                 ))}
               </Stack>
             ) : (

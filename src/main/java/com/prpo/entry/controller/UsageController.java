@@ -55,28 +55,37 @@ public class UsageController implements UsageApi {
 
       totalRequests += 1;
 
-      if (e.tokens() != null) {
-        totalTokens += e.tokens();
-      }
-      if (e.cost() != null) {
-        totalCost += e.cost();
-      }
+      if (e.tokens() != null) totalTokens += e.tokens();
+      if (e.cost() != null) totalCost += e.cost();
 
       String providerId = e.providerId() != null ? e.providerId() : "unknown";
       ProviderAgg agg = byProvider.computeIfAbsent(providerId, k -> new ProviderAgg());
+
       agg.requests += 1;
       if (e.tokens() != null) agg.tokens += e.tokens();
       if (e.cost() != null) agg.cost += e.cost();
+
+      if (e.latencyMs() != null && e.latencyMs() > 0) {
+        agg.latencySumMs += e.latencyMs();
+        agg.latencyCount += 1;
+      }
     }
 
     List<UsageProviderBreakdown> byProviderList = new ArrayList<>();
     for (var entry : byProvider.entrySet()) {
+      ProviderAgg agg = entry.getValue();
+
+      Integer avgLatencyMs = null;
+      if (agg.latencyCount > 0) {
+        avgLatencyMs = (int) Math.round((double) agg.latencySumMs / (double) agg.latencyCount);
+      }
+
       UsageProviderBreakdown b = new UsageProviderBreakdown();
       b.setProviderId(entry.getKey());
-      b.setRequests((int) entry.getValue().requests);
-      b.setTokens((int) entry.getValue().tokens);
-      b.setCost(entry.getValue().cost);
-      b.setAvgLatencyMs(null);
+      b.setRequests((int) agg.requests);
+      b.setTokens((int) agg.tokens);
+      b.setCost(agg.cost);
+      b.setAvgLatencyMs(avgLatencyMs);
       byProviderList.add(b);
     }
 
@@ -107,5 +116,8 @@ public class UsageController implements UsageApi {
     long requests = 0;
     long tokens = 0;
     double cost = 0.0;
+
+    long latencySumMs = 0;
+    long latencyCount = 0;
   }
 }
