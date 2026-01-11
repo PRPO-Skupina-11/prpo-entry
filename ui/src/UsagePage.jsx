@@ -65,7 +65,7 @@ export default function UsagePage() {
                 <Typography>Total requests: {usage.totalRequests}</Typography>
                 <Typography>Total tokens: {usage.totalTokens}</Typography>
                 <Typography>
-                  Total cost: {usage.totalCost.toFixed(4)} {usage.currency}
+                  Estimated cost: {usage.totalCost.toFixed(4)} {usage.currency}
                 </Typography>
               </Stack>
             ) : null}
